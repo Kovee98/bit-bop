@@ -47,10 +47,6 @@
                 align-items: center;
                 cursor: pointer;
             }
-            /* .col:hover {
-                background: rgb(201, 201, 201);
-                color: rgb(255, 255, 255);
-            } */
 
             #overlay {
                 position: fixed;
@@ -88,15 +84,19 @@
     <script type="text/javascript">
         // constants
         const GRID_SIZE = 9;
-        const TICK_INTERVAL = 500;
+        const TICK_RATE = 1000;
+
         const FLIP_CHANCE_MIN = 0.25;
         const FLIP_CHANCE_MAX = 0.75;
         const FLIP_RATE_INC = 0.0125;
 
+        const BIT_INFECTION_RATE = 3000;
+        const BIT_INFECTION_CHANCE = 0.5;
+
         // difficulty curve
         // const DIFFICULTY_STEP_SIZE = TICK_INTERVAL / 1000;
         const curveMax = 100;
-        const curveOffset = 4;
+        const curveOffset = 1;
         const curveSteepness = -0.1;
 
         // runtime
@@ -106,10 +106,10 @@
         let time;
         let bitId;
         let progressionId;
+        let infectionId;
         let flipChance;
 
         function init () {
-            // grid = document.querySelector('#grid');
             clock = document.querySelector('#clock');
 
             totalScore = 0;
@@ -120,43 +120,37 @@
             flipChance = sigmoid(time);
 
             grid = new Grid(GRID_SIZE);
-            debugger;
+            // grid.getBit(4, 4).value = 1;
             document.querySelector('body').appendChild(grid.html);
 
-            // user input
-            // grid.addEventListener('click', (e) => {
-            //     const bit = e.srcElement;
-            //     const bitVal = Number(bit.innerHTML);
-            //     // console.log('bit:', bitVal);
-            //     bit.innerHTML = '0';
-            //     addPoints(1);
-            // });
-
-            // startGame();
+            startGame();
         }
 
         function startGame () {
             // bit flipping loop
-            clearInterval(bitId);
-            bitId = setInterval(() => {
-                if (getRandInt(0, 100) <= flipChance) {
-                    const randRow = getRandInt(0, GRID_SIZE - 1);
-                    const randCol = getRandInt(0, GRID_SIZE - 1);
-                    const bit = document.getElementById(`${randRow},${randCol}`);
-
-                    // flip the bit
-                    bit.innerHTML = '1';
-                }
-            }, TICK_INTERVAL);
+            // clearInterval(bitId);
+            // bitId = setInterval(() => {
+            //     if (getRandInt(0, 100) <= flipChance) {
+            //         grid.randomBit.value = '1';
+            //     }
+            // }, TICK_RATE);
 
             // difficulty progression loop
             clearInterval(progressionId);
             progressionId = setInterval(() => {
                 time += 1;
-                flipChance = sigmoid(time);
-                // console.log('flipChance:', flipChance);
                 clock.innerHTML = formatToClock(time);
-            }, 1000);
+                flipChance = sigmoid(time);
+
+                if (getRandInt(0, 100) <= flipChance) {
+                    grid.randomBit.value = '1';
+                }
+            }, TICK_RATE);
+
+            clearInterval(infectionId);
+            infectionId = setInterval(() => {
+                grid.spread();
+            }, BIT_INFECTION_RATE);
         }
 
         function addPoints (pts) {
@@ -224,10 +218,28 @@
                 return this.#html;
             }
 
+            getBit (row, col) {
+                if (this.exists(row, col)) {
+                    const returnBit = this.#bits[row][col];
+                    return returnBit;
+                }
+
+                return undefined;
+            }
+
             get randomBit () {
                 const randRow = this.getRandInt(0, this.rowCount - 1);
                 const randCol = this.getRandInt(0, this.colCount - 1);
                 return this.#bits[randRow][randCol];
+            }
+
+            exists (row, col) {
+                const rowMin = row >= 0;
+                const rowMax = row < this.rowCount;
+                const colMin = col >= 0;
+                const colMax = col < this.colCount;
+
+                return rowMin && rowMax && colMin && colMax;
             }
 
             reset () {
@@ -235,7 +247,53 @@
             }
 
             spread () {
-                // TODO: trigger each bit to spread to neighboring bit
+                const spreadMap = {};
+
+                for (let row = 0; row < this.rowCount; row++) {
+                    for (let col = 0; col < this.colCount; col++) {
+                        const bit = this.#bits[row][col];
+                        if (bit.value === 1) {
+                            // original
+                            // spreadMap[`${row},${col}`] = { row, col };
+
+                            // left neighbor
+                            const leftRow = row;
+                            const leftCol = col -1;
+                            if (this.exists(leftRow, leftCol) && Math.random() < BIT_INFECTION_CHANCE) {
+                                spreadMap[`${leftRow},${leftCol}`] = { row: leftRow, col: leftCol };
+                            }
+
+                            // above neighbor
+                            const aboveRow = row - 1;
+                            const aboveCol = col;
+                            if (this.exists(aboveRow, aboveCol) && Math.random() < BIT_INFECTION_CHANCE) {
+                                spreadMap[`${aboveRow},${aboveCol}`] = { row: aboveRow, col: aboveCol };
+                            }
+
+                            // right neighbor
+                            const rightRow = row;
+                            const rightCol = col + 1;
+                            if (this.exists(rightRow, rightCol) && Math.random() < BIT_INFECTION_CHANCE) {
+                                spreadMap[`${rightRow},${rightCol}`] = { row: rightRow, col: rightCol };
+                            }
+
+                            // below neighbor
+                            const belowRow = row + 1;
+                            const belowCol = col;
+                            if (this.exists(belowRow, belowCol) && Math.random() < BIT_INFECTION_CHANCE) {
+                                spreadMap[`${belowRow},${belowCol}`] = { row: belowRow, col: belowCol };
+                            }
+                        }
+                    }
+                }
+
+                const values = Object.values(spreadMap);
+                for (let i = 0; i < values.length; i++) {
+                    const { row, col } = values[i];
+                    const bit = this.#bits[row][col];
+                    // bit.flip();
+                    bit.value = 1;
+                }
             }
 
             isComplete () {
@@ -271,17 +329,16 @@
                 this.#html.setAttribute("class", "bit");
                 this.#html.innerHTML = Number(this.#value);
                 this.#html.addEventListener('click', (e) => {
-                    this.#value = 0;
+                    this.value = 0;
                 });
             }
 
             flip () {
-                this.#value = !this.#value;
-                return Number(this.#value);
+                this.value = !this.value;
+                return Number(this.value);
             }
 
             set value (value) {
-                debugger;
                 this.#value = !!value;
                 this.#html.innerHTML = Number(this.#value);
                 return Number(this.#value);
