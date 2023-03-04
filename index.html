@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+    <head>
+        <meta charset="UTF-8">
+        <meta http-equiv="X-UA-Compatible" content="IE=edge">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Bit Bop</title>
+
+        <style>
+            * {
+                margin: 0;
+                padding: 0;
+                user-select: none;
+            }
+
+            body {
+                width: 100vw;
+                height: 100vh;
+                background: rgb(240, 240, 240);
+                display: flex;
+                justify-content: center;
+                align-items: center;
+            }
+
+            .grid {
+                position: fixed;
+                width: 500px;
+                height: 500px;
+                font-size: 3rem;
+                font-family: monospace;
+                /* font-weight: bold; */
+                z-index: 200;
+            }
+
+            .row {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+            }
+
+            .bit {
+                width: 100%;
+                aspect-ratio: 1/1;
+                text-align: center;
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                cursor: pointer;
+            }
+            /* .col:hover {
+                background: rgb(201, 201, 201);
+                color: rgb(255, 255, 255);
+            } */
+
+            #overlay {
+                position: fixed;
+                left: 0;
+                right: 0;
+                top: 0;
+                bottom: 0;
+                padding: 2rem;
+                z-index: 100;
+            }
+
+            #ui {
+                font-size: 300%;
+                /* font-weight: bold; */
+                /* color: rgba(255, 255, 255, 0.85); */
+                font-family:'cyberpunk';
+                display: flex;
+                justify-content: space-between;
+                align-items: start;
+            }
+        </style>
+    </head>
+
+    <body onload="init()">
+        <div id="overlay">
+            <span id="ui">
+                <span id="total">0</span>
+                <span id="clock">0:00</span>
+            </span>
+        </div>
+
+        <!-- <span id="grid-wrapper"></span> -->
+    </body>
+
+    <script type="text/javascript">
+        // constants
+        const GRID_SIZE = 9;
+        const TICK_INTERVAL = 500;
+        const FLIP_CHANCE_MIN = 0.25;
+        const FLIP_CHANCE_MAX = 0.75;
+        const FLIP_RATE_INC = 0.0125;
+
+        // difficulty curve
+        // const DIFFICULTY_STEP_SIZE = TICK_INTERVAL / 1000;
+        const curveMax = 100;
+        const curveOffset = 4;
+        const curveSteepness = -0.1;
+
+        // runtime
+        let grid;
+        let clock;
+        let totalScore;
+        let time;
+        let bitId;
+        let progressionId;
+        let flipChance;
+
+        function init () {
+            // grid = document.querySelector('#grid');
+            clock = document.querySelector('#clock');
+
+            totalScore = 0;
+            time = 0;
+
+            clock.innerHTML = formatToClock(time);
+
+            flipChance = sigmoid(time);
+
+            grid = new Grid(GRID_SIZE);
+            debugger;
+            document.querySelector('body').appendChild(grid.html);
+
+            // user input
+            // grid.addEventListener('click', (e) => {
+            //     const bit = e.srcElement;
+            //     const bitVal = Number(bit.innerHTML);
+            //     // console.log('bit:', bitVal);
+            //     bit.innerHTML = '0';
+            //     addPoints(1);
+            // });
+
+            // startGame();
+        }
+
+        function startGame () {
+            // bit flipping loop
+            clearInterval(bitId);
+            bitId = setInterval(() => {
+                if (getRandInt(0, 100) <= flipChance) {
+                    const randRow = getRandInt(0, GRID_SIZE - 1);
+                    const randCol = getRandInt(0, GRID_SIZE - 1);
+                    const bit = document.getElementById(`${randRow},${randCol}`);
+
+                    // flip the bit
+                    bit.innerHTML = '1';
+                }
+            }, TICK_INTERVAL);
+
+            // difficulty progression loop
+            clearInterval(progressionId);
+            progressionId = setInterval(() => {
+                time += 1;
+                flipChance = sigmoid(time);
+                // console.log('flipChance:', flipChance);
+                clock.innerHTML = formatToClock(time);
+            }, 1000);
+        }
+
+        function addPoints (pts) {
+            totalScore += pts;
+            document.querySelector('#total').innerHTML = totalScore;
+        }
+
+        // utility
+        function getRandInt (min, max) {
+            return Math.floor(Math.random() * (max - min + 1)) + min;
+        }
+        
+        function clamp (val, min, max) {
+            return Math.min(Math.max(val, min), max);
+        }
+
+        // returns the y value for the given x in a sigmoid curve
+        function sigmoid (x) {
+            return (curveMax / (1 + Math.exp(curveOffset + (curveSteepness * x))));
+        }
+
+        function formatToClock (secs) {
+            const sec_num = parseInt(secs, 10); // don't forget the second param
+            const hours   = Math.floor(sec_num / 3600);
+            const minutes = Math.floor((sec_num - (hours * 3600)) / 60);
+            const seconds = sec_num - (hours * 3600) - (minutes * 60);
+
+            return `${String(minutes).padStart(1, '0')}:${String(seconds).padStart(2, '0')}`;
+        }
+
+        // class definitions
+        class Grid {
+            rowCount = 9;
+            colCount = 9;
+            #bits = [];
+            #html = null;
+
+            constructor (rowCount, colCount) {
+                this.rowCount = rowCount;
+                this.colCount = colCount || rowCount;
+                this.#bits = [];
+
+                this.#html = document.createElement('div');
+                this.#html.setAttribute("class", "grid");
+
+                // fill grid with bits
+                for (let row = 0; row < this.rowCount; row++) {
+                    // this.#bits.push(new Array(this.colCount).fill().map((_, col) => new Bit(row, col, false)));
+                    const rowArr = [];
+                    const rowHtml = document.createElement('div');
+                    rowHtml.setAttribute("class", "row");
+
+                    for (let col = 0; col < this.colCount; col++) {
+                        const bit = new Bit(row, col, false);
+                        rowArr.push(bit);
+                        rowHtml.appendChild(bit.html);
+                    }
+
+                    this.#bits.push(rowArr);
+                    this.#html.appendChild(rowHtml);
+                }
+            }
+
+            get html () {
+                return this.#html;
+            }
+
+            get randomBit () {
+                const randRow = this.getRandInt(0, this.rowCount - 1);
+                const randCol = this.getRandInt(0, this.colCount - 1);
+                return this.#bits[randRow][randCol];
+            }
+
+            reset () {
+                // TODO: set all bits to 0
+            }
+
+            spread () {
+                // TODO: trigger each bit to spread to neighboring bit
+            }
+
+            isComplete () {
+                let count = 0;
+                for (let row = 0; row < this.rowCount; row++) {
+                    for (let col = 0; col < this.colCount; col++) {
+                        const bit = this.#bits[row][col];
+                        if (bit.value === 1) {
+                            count++;
+                        }
+                    }
+                }
+
+                return count >= (this.rowCount * this.colCount);
+            }
+
+            getRandInt (min, max) {
+                return Math.floor(Math.random() * (max - min + 1)) + min;
+            }
+        }
+
+        class Bit {
+            x = 0;
+            y = 0;
+            #value = false;
+            #html = null;
+
+            constructor (x, y, value = false) {
+                this.x = x;
+                this.y = y;
+                this.#value = value;
+                this.#html = document.createElement('span');
+                this.#html.setAttribute("class", "bit");
+                this.#html.innerHTML = Number(this.#value);
+                this.#html.addEventListener('click', (e) => {
+                    this.#value = 0;
+                });
+            }
+
+            flip () {
+                this.#value = !this.#value;
+                return Number(this.#value);
+            }
+
+            set value (value) {
+                debugger;
+                this.#value = !!value;
+                this.#html.innerHTML = Number(this.#value);
+                return Number(this.#value);
+            }
+
+            get value () {
+                return Number(this.#value);
+            }
+
+            get html () {
+                return this.#html;
+            }
+        }
+    </script>
+</html>
